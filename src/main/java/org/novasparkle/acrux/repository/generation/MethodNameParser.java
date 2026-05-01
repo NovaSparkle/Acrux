@@ -1,4 +1,4 @@
-package org.novasparkle.repository.generation;
+package org.novasparkle.acrux.repository.generation;
 
 import java.util.*;
 import java.util.regex.*;

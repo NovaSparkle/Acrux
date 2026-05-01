@@ -1,8 +1,8 @@
-package org.novasparkle;
+package org.novasparkle.acrux;
 
 import lombok.Getter;
-import org.novasparkle.agent.AgentContext;
-import org.novasparkle.processor.ProcessorContext;
+import org.novasparkle.acrux.agent.AgentContext;
+import org.novasparkle.acrux.processor.ProcessorContext;
 
 @Getter
 public class Acrux {

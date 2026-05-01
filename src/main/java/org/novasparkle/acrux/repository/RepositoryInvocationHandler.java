@@ -1,11 +1,11 @@
-package org.novasparkle.repository;
+package org.novasparkle.acrux.repository;
 
 import jakarta.persistence.Query;
 import lombok.SneakyThrows;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
-import org.novasparkle.repository.generation.MethodNameParser;
-import org.novasparkle.util.HibernateUtil;
+import org.novasparkle.acrux.repository.generation.MethodNameParser;
+import org.novasparkle.acrux.util.HibernateUtil;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;

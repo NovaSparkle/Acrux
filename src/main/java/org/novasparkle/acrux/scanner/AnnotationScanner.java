@@ -1,8 +1,8 @@
-package org.novasparkle.scanner;
+package org.novasparkle.acrux.scanner;
 
 
 import lombok.experimental.UtilityClass;
-import org.novasparkle.Acrux;
+import org.novasparkle.acrux.Acrux;
 
 import java.io.File;
 import java.io.IOException;

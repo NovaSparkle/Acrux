@@ -1,4 +1,4 @@
-package org.novasparkle.agent;
+package org.novasparkle.acrux.agent;
 
 import java.util.HashMap;
 import java.util.Map;

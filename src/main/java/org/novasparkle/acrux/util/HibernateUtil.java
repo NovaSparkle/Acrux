@@ -1,4 +1,4 @@
-package org.novasparkle.util;
+package org.novasparkle.acrux.util;
 
 import lombok.Getter;
 import lombok.experimental.UtilityClass;

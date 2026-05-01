@@ -1,14 +1,14 @@
-package org.novasparkle.processor;
+package org.novasparkle.acrux.processor;
 
 import lombok.Getter;
 import lombok.SneakyThrows;
 import lombok.ToString;
 import lombok.experimental.Accessors;
-import org.novasparkle.Acrux;
-import org.novasparkle.annotations.Processor;
-import org.novasparkle.scanner.AnnotationScanner;
-import org.novasparkle.scanner.ClassEntry;
-import org.novasparkle.scanner.EntryContainer;
+import org.novasparkle.acrux.Acrux;
+import org.novasparkle.acrux.annotations.Processor;
+import org.novasparkle.acrux.scanner.AnnotationScanner;
+import org.novasparkle.acrux.scanner.ClassEntry;
+import org.novasparkle.acrux.scanner.EntryContainer;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;

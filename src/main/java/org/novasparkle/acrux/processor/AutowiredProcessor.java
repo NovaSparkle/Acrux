@@ -1,17 +1,17 @@
-package org.novasparkle.processor;
+package org.novasparkle.acrux.processor;
 
 import lombok.Getter;
 import lombok.SneakyThrows;
-import org.novasparkle.Acrux;
-import org.novasparkle.agent.AgentContext;
-import org.novasparkle.annotations.Agent;
-import org.novasparkle.annotations.Autowired;
-import org.novasparkle.annotations.Processor;
-import org.novasparkle.repository.IRepository;
-import org.novasparkle.repository.RepositoryFactory;
-import org.novasparkle.scanner.AnnotationScanner;
-import org.novasparkle.scanner.ClassEntry;
-import org.novasparkle.scanner.EntryContainer;
+import org.novasparkle.acrux.Acrux;
+import org.novasparkle.acrux.agent.AgentContext;
+import org.novasparkle.acrux.annotations.Agent;
+import org.novasparkle.acrux.annotations.Autowired;
+import org.novasparkle.acrux.annotations.Processor;
+import org.novasparkle.acrux.repository.IRepository;
+import org.novasparkle.acrux.repository.RepositoryFactory;
+import org.novasparkle.acrux.scanner.AnnotationScanner;
+import org.novasparkle.acrux.scanner.ClassEntry;
+import org.novasparkle.acrux.scanner.EntryContainer;
 
 import java.lang.reflect.Field;
 

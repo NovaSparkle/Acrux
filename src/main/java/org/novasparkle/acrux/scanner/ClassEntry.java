@@ -1,4 +1,4 @@
-package org.novasparkle.scanner;
+package org.novasparkle.acrux.scanner;
 
 import lombok.Getter;
 
