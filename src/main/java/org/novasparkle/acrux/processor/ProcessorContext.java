@@ -36,7 +36,7 @@ public class ProcessorContext {
         ProcessorContext context = new ProcessorContext();
 
         EntryContainer<Processor> processorEntries = AnnotationScanner.scanPackage(clazz, Processor.class);
-        processorEntries.addAll(AnnotationScanner.scanPackage(clazz, Processor.class));
+        processorEntries.addAll(AnnotationScanner.scanPackage(Acrux.class, Processor.class));
 
         for (ClassEntry<Processor> classEntry : processorEntries) {
             Class<?> processorClass = classEntry.getClazz();

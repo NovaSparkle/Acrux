@@ -2,7 +2,6 @@ package org.novasparkle.acrux.scanner;
 
 
 import lombok.experimental.UtilityClass;
-import org.novasparkle.acrux.Acrux;
 
 import java.io.File;
 import java.io.IOException;
@@ -29,7 +28,7 @@ public class AnnotationScanner {
             JarEntry jarEntry = enumeration.nextElement();
             if (jarEntry.getName().endsWith(".class")) {
                 String className = jarEntry.getName().replace(".class", "").replace('/', '.');
-                if (!className.startsWith(Acrux.class.getPackage().getName())) continue;
+                if (!className.startsWith(mainClass.getPackage().getName())) continue;
                 if (packageNames.length > 0 && Arrays.stream(packageNames).noneMatch(className::startsWith)) continue;
                 try {
                     Class<?> clazz = Class.forName(className);

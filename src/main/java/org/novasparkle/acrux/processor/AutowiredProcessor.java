@@ -36,7 +36,7 @@ public class AutowiredProcessor implements AnnotationProcessor {
             }
             acrux.getAgentContext().registerAgent(agentClass, agentInstance);
         }
-        System.out.println(acrux.getAgentContext());
+
         for (ClassEntry<Agent> classEntry : annotatedEntries) {
             Class<?> agentClass = classEntry.getClazz();
             Object agent = acrux.getAgentContext().getAgent(agentClass);
