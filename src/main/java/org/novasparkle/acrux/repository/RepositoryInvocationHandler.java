@@ -3,6 +3,7 @@ package org.novasparkle.acrux.repository;
 import jakarta.persistence.Query;
 import lombok.SneakyThrows;
 import org.hibernate.Session;
+import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.novasparkle.acrux.repository.generation.MethodNameParser;
 import org.novasparkle.acrux.util.HibernateUtil;
@@ -55,8 +56,12 @@ public class RepositoryInvocationHandler implements InvocationHandler {
             case "persist" -> {
                 try (Session session = HibernateUtil.openSession()) {
                     Transaction tx = session.beginTransaction();
-                    if (session.contains(args[0])) {
-                        return session.merge(args[0]);
+                    SessionFactory factory = session.getSessionFactory();
+                    Object id = factory.getPersistenceUnitUtil().getIdentifier(args[0]);
+                    if (id != null) {
+                        Object entity = session.merge(args[0]);
+                        tx.commit();
+                        return entity;
                     }
                     session.persist(args[0]);
                     tx.commit();
