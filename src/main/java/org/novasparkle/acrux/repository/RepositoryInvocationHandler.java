@@ -125,7 +125,7 @@ public class RepositoryInvocationHandler implements InvocationHandler {
                         }
                     }
                     if (method.getReturnType().equals(List.class)) {
-                        return Optional.ofNullable(query.getResultList());
+                        return query.getResultList();
                     } else {
                         return Optional.ofNullable(query.getSingleResultOrNull());
                     }
