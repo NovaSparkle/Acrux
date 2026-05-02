@@ -95,7 +95,7 @@ public class RepositoryInvocationHandler implements InvocationHandler {
             case "remove" -> {
                 try (Session session = HibernateUtil.openSession()) {
                     Transaction tx = session.beginTransaction();
-                    if (args[0].getClass().isAssignableFrom(entityType)) {
+                    if (entityType.isAssignableFrom(args[0].getClass())) {
                         throw new IllegalArgumentException(args[0].getClass().getSimpleName() + " не является сущностью!");
                     }
                     session.remove(args[0]);
