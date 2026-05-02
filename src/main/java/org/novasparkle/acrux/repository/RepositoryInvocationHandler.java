@@ -68,9 +68,6 @@ public class RepositoryInvocationHandler implements InvocationHandler {
                 try (Session session = HibernateUtil.openSession()) {
                     Transaction tx = session.beginTransaction();
                     Object entity = session.find(entityType, args[0]);
-                    if (entity == null) {
-                        throw new NullPointerException("Сущность типа " + entityType.getSimpleName() + " не найдена по идентификатору " + args[0].getClass().getSimpleName());
-                    }
                     boolean contains = session.contains(entity);
                     tx.commit();
                     return contains;
