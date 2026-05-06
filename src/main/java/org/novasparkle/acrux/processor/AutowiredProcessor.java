@@ -51,7 +51,7 @@ public class AutowiredProcessor implements AnnotationProcessor {
                 Class<?> fieldType = field.getType();
                 Object dependency = agentContext.getAgent(fieldType);
                 if (dependency == null) {
-                    throw new NullPointerException();
+                    throw new NullPointerException(String.format("Для агента %s зависимости %s не существует!", agentClass.getName(), fieldType.getName()));
                 }
                 field.set(agent, dependency);
             }
