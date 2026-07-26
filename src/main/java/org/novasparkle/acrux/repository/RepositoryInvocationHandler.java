@@ -56,16 +56,12 @@ public class RepositoryInvocationHandler implements InvocationHandler {
             case "persist" -> {
                 try (Session session = HibernateUtil.openSession()) {
                     Transaction tx = session.beginTransaction();
-                    SessionFactory factory = session.getSessionFactory();
-                    Object id = factory.getPersistenceUnitUtil().getIdentifier(args[0]);
-                    if (id != null) {
-                        Object entity = session.merge(args[0]);
-                        tx.commit();
-                        return entity;
-                    }
-                    session.persist(args[0]);
+
+                    var merged = session.merge(args[0]);
+                    session.flush();
                     tx.commit();
-                    return args[0];
+
+                    return merged;
                 }
             }
 
