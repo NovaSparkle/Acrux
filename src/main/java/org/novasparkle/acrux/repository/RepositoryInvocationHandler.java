@@ -58,7 +58,7 @@ public class RepositoryInvocationHandler implements InvocationHandler {
                     Transaction tx = session.beginTransaction();
 
                     var merged = session.merge(args[0]);
-                    session.flush();
+                    session.flush();    
                     tx.commit();
 
                     return merged;

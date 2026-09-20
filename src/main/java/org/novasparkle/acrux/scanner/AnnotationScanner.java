@@ -1,6 +1,5 @@
 package org.novasparkle.acrux.scanner;
 
-
 import lombok.experimental.UtilityClass;
 
 import java.io.File;
@@ -17,48 +16,52 @@ import java.util.jar.JarFile;
 
 @UtilityClass
 public class AnnotationScanner {
-    public <A extends Annotation> EntryContainer<A> scanPackage(Class<?> mainClass, Class<A> annotationClass, String... packageNames) throws IOException, ClassNotFoundException {
+    public <A extends Annotation> EntryContainer<A> scanPackage(Class<?> mainClass, Class<A> annotationClass, String... packageNames) throws IOException {
         EntryContainer<A> entryContainer = new EntryContainer<>(annotationClass);
-        JarFile jarFile = getJar(mainClass);
-        if (jarFile == null) {
-            throw new IllegalArgumentException("JarFile is null!");
-        }
-        Enumeration<JarEntry> enumeration = jarFile.entries();
-        while (enumeration.hasMoreElements()) {
-            JarEntry jarEntry = enumeration.nextElement();
-            if (jarEntry.getName().endsWith(".class")) {
+        ClassLoader classLoader = mainClass.getClassLoader();
+
+        try (JarFile jarFile = getJar(mainClass)) {
+            if (jarFile == null) {
+                throw new IllegalArgumentException("JarFile is null!");
+            }
+
+            Enumeration<JarEntry> enumeration = jarFile.entries();
+            while (enumeration.hasMoreElements()) {
+                JarEntry jarEntry = enumeration.nextElement();
+                if (!jarEntry.getName().endsWith(".class")) continue;
+
                 String className = jarEntry.getName().replace(".class", "").replace('/', '.');
+
+                if (className.contains(".libs.") || className.contains(".shadow.")) continue;
+
                 if (!className.startsWith(mainClass.getPackage().getName())) continue;
                 if (packageNames.length > 0 && Arrays.stream(packageNames).noneMatch(className::startsWith)) continue;
+
                 try {
-                    Class<?> clazz = Class.forName(className);
+                    Class<?> clazz = Class.forName(className, false, classLoader);
+
                     if (clazz.isAnnotationPresent(annotationClass)) {
                         ClassEntry<A> classEntry = new ClassEntry<>(clazz, annotationClass);
                         entryContainer.add(classEntry);
                     }
-                } catch (NoClassDefFoundError e) {
-                    System.err.println("Failed to load class: " + className);
-                    throw e;
+                } catch (ClassNotFoundException | LinkageError ignored) {
+                    // 4. Пропускаем классы с битыми зависимостями вместо аварийной остановки
                 }
             }
         }
-        jarFile.close();
+
         return entryContainer;
     }
 
     private JarFile getJar(Class<?> clazz) throws IOException {
         ProtectionDomain protectionDomain = clazz.getProtectionDomain();
-        if (protectionDomain == null) {
-            return null;
-        }
+        if (protectionDomain == null) return null;
+
         CodeSource codeSource = protectionDomain.getCodeSource();
-        if (codeSource == null) {
-            return null;
-        }
+        if (codeSource == null) return null;
+
         URL location = codeSource.getLocation();
-        if (location == null) {
-            return null;
-        }
+        if (location == null) return null;
 
         File file;
         try {
