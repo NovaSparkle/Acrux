@@ -9,46 +9,37 @@ import java.util.stream.Collectors;
  *
  * <p>Поддерживает:
  * <ul>
- *   <li>Префиксы: findBy, getBy, readBy, queryBy, searchBy, streamBy,
- *       countBy, existsBy, deleteBy, removeBy</li>
+ *   <li>Префиксы: find, get, read, query, search, stream, count, exists, delete, remove
+ *       (включая вариации findAllBy..., countAllBy..., findAll, count, deleteAll)</li>
  *   <li>Операторы: And, Or с правильным приоритетом (And выше Or)</li>
  *   <li>Ключевые слова условий: Equals, Is, Not, Like, NotLike,
  *       StartingWith/StartsWith, EndingWith/EndsWith, Containing/Contains,
  *       LessThan, LessThanEqual, GreaterThan, GreaterThanEqual,
  *       Between, In, NotIn, IsNull, IsNotNull, True, False,
- *       Before, After, OrderBy + Asc/Desc</li>
- *   <li>Вложенные отношения через подчёркивание: findByAddress_CityName
- *       → u.address.cityName</li>
+ *       Before, After, MemberOf, NotMemberOf + суффикс IgnoreCase</li>
+ *   <li>Вложенные отношения через подчёркивание: findByAddress_CityName → u.address.cityName</li>
  *   <li>IgnoreCase / AllIgnoreCase</li>
- *   <li>Distinct: findDistinctBy...</li>
+ *   <li>Distinct: findDistinctBy..., countDistinctBy...</li>
  *   <li>Top/First N: findTop3By..., findFirstBy...</li>
- *   <li>Сортировка: findByNameOrderByCreatedAtDesc</li>
+ *   <li>Сортировка: findByNameOrderByCreatedAtDesc, findAllByOrderByCreatedAtDesc</li>
  * </ul>
- *
- * <p>Пример:
- * <pre>{@code
- * MethodNameParser parser = new MethodNameParser("User", "u");
- * ParsedQuery q = parser.parse("findByAddress_CityNameAndAgeBetweenOrderByLastNameAsc");
- *
- * // q.jpql()   → SELECT u FROM User u
- * //               WHERE u.address.cityName = :param0
- * //               AND u.age BETWEEN :param1 AND :param2
- * //               ORDER BY u.lastName ASC
- *
- * // q.params() → [
- * //   ParamMeta{name="param0", kind=SINGLE,         argIndex=0},
- * //   ParamMeta{name="param1", kind=BETWEEN_START,  argIndex=1},
- * //   ParamMeta{name="param2", kind=BETWEEN_END,    argIndex=2},
- * // ]
- * }</pre>
  */
 public class MethodNameParser {
 
     // ─────────────────────────────── константы ───────────────────────────────
 
+    /**
+     * Паттерн разбирает:
+     * 1: action (find|get|read|query|search|stream|count|exists|delete|remove)
+     * 2: Distinct (опционально)
+     * 3: All (опционально, например findAllBy...)
+     * 4: Top | First (опционально)
+     * 5: Число лимита после Top/First (опционально)
+     * 6: Вся часть после By (если By присутствует)
+     */
     private static final Pattern SUBJECT_PATTERN = Pattern.compile(
-        "^(find|get|read|query|search|stream|count|exists|delete|remove)" +
-        "(Distinct)?(Top|First)?(\\d+)?By(.*)$"
+            "^(find|get|read|query|search|stream|count|exists|delete|remove)" +
+                    "(Distinct)?(All)?(?:(Top|First)(\\d+)?)?(?:By(.*))?$"
     );
 
     /**
@@ -57,20 +48,20 @@ public class MethodNameParser {
      * не срезал «LessThan» вместо «LessThanEqual».
      */
     private static final List<String> CONDITION_KEYWORDS = List.of(
-        "IsNotNull", "IsNull",
-        "NotLike", "NotIn", "Not",
-        "LessThanEqual", "LessThan",
-        "GreaterThanEqual", "GreaterThan",
-        "StartingWith", "StartsWith",
-        "EndingWith",   "EndsWith",
-        "Containing",   "Contains",
-        "Like",
-        "Between",
-        "In",
-        "Before", "After",
-        "True", "False",
-        "IgnoreCase",
-        "Equals", "Is"      // «мягкие» — не меняют оператор сравнения
+            "IsNotNull", "IsNull",
+            "NotMemberOf", "MemberOf",
+            "NotLike", "NotIn", "Not",
+            "LessThanEqual", "LessThan",
+            "GreaterThanEqual", "GreaterThan",
+            "StartingWith", "StartsWith",
+            "EndingWith",   "EndsWith",
+            "Containing",   "Contains",
+            "Like",
+            "Between",
+            "In",
+            "Before", "After",
+            "True", "False",
+            "Equals", "Is"
     );
 
     // ──────────────────────────────── поля ───────────────────────────────────
@@ -94,14 +85,15 @@ public class MethodNameParser {
         Matcher m = SUBJECT_PATTERN.matcher(methodName);
         if (!m.matches()) {
             throw new InvalidMethodNameException(
-                "Метод «" + methodName + "» не соответствует ни одному поддерживаемому префиксу."
+                    "Метод «" + methodName + "» не соответствует ни одному поддерживаемому префиксу."
             );
         }
 
-        String  action    = m.group(1);           // find | count | exists | delete | ...
-        boolean distinct  = m.group(2) != null;   // Distinct
-        String  limitStr  = m.group(4);           // число после Top/First
-        String  predicate = m.group(5);           // всё после By
+        String  action    = m.group(1);                    // find | count | exists | delete | ...
+        boolean distinct  = m.group(2) != null;            // Distinct
+        String  topFirst  = m.group(4);                    // Top | First
+        String  limitStr  = m.group(5);                    // число после Top/First
+        String  predicate = m.group(6) != null ? m.group(6) : ""; // всё после By
 
         QueryType type = resolveQueryType(action);
 
@@ -119,46 +111,63 @@ public class MethodNameParser {
         if (conditionPart.endsWith("AllIgnoreCase")) {
             allIgnoreCase = true;
             conditionPart = conditionPart.substring(
-                0, conditionPart.length() - "AllIgnoreCase".length()
+                    0, conditionPart.length() - "AllIgnoreCase".length()
             );
         }
 
         // ── Разбираем условия ─────────────────────────────────────────────
         List<ParamMeta> params    = new ArrayList<>();
         String          whereJpql = conditionPart.isEmpty()
-            ? ""
-            : buildWhereExpression(conditionPart, allIgnoreCase, params);
+                ? ""
+                : buildWhereExpression(conditionPart, allIgnoreCase, params);
 
-        // ── ORDER BY ──────────────────────────────────────────────────────
-        String orderJpql = orderByRaw.isEmpty() ? "" : buildOrderBy(orderByRaw);
+        // ── ORDER BY (не применяется для COUNT, EXISTS и DELETE) ──────────
+        String orderJpql = (!orderByRaw.isEmpty() && type == QueryType.SELECT)
+                ? buildOrderBy(orderByRaw)
+                : "";
 
         // ── Собираем итоговый JPQL ────────────────────────────────────────
         String jpql = assembleJpql(type, distinct, whereJpql, orderJpql);
 
-        int limit = (limitStr != null) ? Integer.parseInt(limitStr) : -1;
+        // ── Вычисляем лимит (Top/First без числа = 1, для EXISTS всегда 1)
+        int limit = -1;
+        if (limitStr != null) {
+            limit = Integer.parseInt(limitStr);
+        } else if (topFirst != null) {
+            limit = 1;
+        }
 
-        return new ParsedQuery(jpql, type, Collections.unmodifiableList(params), distinct, limit);
+        return new ParsedQuery(
+                jpql,
+                type,
+                Collections.unmodifiableList(params),
+                distinct,
+                limit
+        );
     }
 
     // ─────────────────────────────── сборка JPQL ─────────────────────────────
 
     private String assembleJpql(QueryType type, boolean distinct,
-                                 String whereJpql, String orderJpql) {
+                                String whereJpql, String orderJpql) {
         StringBuilder sb = new StringBuilder();
 
         switch (type) {
-            case COUNT, EXISTS -> sb.append("SELECT COUNT(")
-                                    .append(alias).append(") FROM ")
-                                    .append(entityName).append(' ').append(alias);
+            case COUNT, EXISTS -> {
+                sb.append("SELECT COUNT(");
+                if (distinct) sb.append("DISTINCT ");
+                sb.append(alias).append(") FROM ")
+                        .append(entityName).append(' ').append(alias);
+            }
 
             case DELETE -> sb.append("DELETE FROM ")
-                             .append(entityName).append(' ').append(alias);
+                    .append(entityName).append(' ').append(alias);
 
-            default -> {
+            case SELECT -> {
                 sb.append("SELECT ");
                 if (distinct) sb.append("DISTINCT ");
                 sb.append(alias).append(" FROM ")
-                  .append(entityName).append(' ').append(alias);
+                        .append(entityName).append(' ').append(alias);
             }
         }
 
@@ -170,51 +179,36 @@ public class MethodNameParser {
 
     // ────────────────────── разбор предиката условий ─────────────────────────
 
-    /**
-     * Строит выражение WHERE с правильным приоритетом And {@literal >} Or.
-     *
-     * <ol>
-     *   <li>Разбить по Or  → Or-группы</li>
-     *   <li>Каждую Or-группу разбить по And → And-сегменты</li>
-     *   <li>Каждый сегмент → одно условие (поле + ключевое слово)</li>
-     * </ol>
-     *
-     * {@code params} накапливается in-place — порядок элементов совпадает
-     * с порядком именованных параметров в JPQL и с порядком аргументов метода.
-     */
     private String buildWhereExpression(String predicate,
                                         boolean allIgnoreCase,
                                         List<ParamMeta> params) {
 
         List<String> orParts = splitByOperator(predicate, "Or");
-
-        // Счётчик JPQL-параметров — единый для всего предиката
         int[] nextParam = {0};
 
         List<String> orClauses = orParts.stream().map(orPart -> {
             List<String> andParts   = splitByOperator(orPart, "And");
             List<String> andClauses = andParts.stream()
-                .map(segment -> buildConditionExpression(
-                    parseConditionSegment(segment), allIgnoreCase, params, nextParam))
-                .collect(Collectors.toList());
+                    .map(segment -> buildConditionExpression(
+                            parseConditionSegment(segment), allIgnoreCase, params, nextParam))
+                    .collect(Collectors.toList());
 
             return andClauses.size() == 1
-                ? andClauses.get(0)
-                : String.join(" AND ", andClauses);
+                    ? andClauses.get(0)
+                    : String.join(" AND ", andClauses);
 
-        }).collect(Collectors.toList());
+        }).toList();
 
         if (orClauses.size() == 1) return orClauses.get(0);
 
         return orClauses.stream()
-            .map(c -> "(" + c + ")")
-            .collect(Collectors.joining(" OR "));
+                .map(c -> "(" + c + ")")
+                .collect(Collectors.joining(" OR "));
     }
 
     /**
-     * Разбивает строку по оператору {@code And} или {@code Or}.
-     * Условие разбиения: после оператора идёт заглавная буква или конец строки.
-     * Это защищает от ложных срабатываний на поля вроде {@code orderId}.
+     * Разбивает строку по оператору {@code And} или {@code Or},
+     * если после него идёт заглавная буква (начало нового поля).
      */
     private List<String> splitByOperator(String s, String op) {
         List<String> result = new ArrayList<>();
@@ -225,11 +219,15 @@ public class MethodNameParser {
             if (s.startsWith(op, i)) {
                 int  afterIdx = i + op.length();
                 char after    = afterIdx < s.length() ? s.charAt(afterIdx) : '\0';
-                if (Character.isUpperCase(after) || after == '\0') {
-                    result.add(s.substring(start, i));
-                    start = afterIdx;
-                    i     = afterIdx;
-                    continue;
+                if (Character.isUpperCase(after)) {
+                    String chunk = s.substring(start, i);
+                    // Защита от разбиения прямо внутри Between, если поле называется And...
+                    if (!chunk.isEmpty()) {
+                        result.add(chunk);
+                        start = afterIdx;
+                        i     = afterIdx;
+                        continue;
+                    }
                 }
             }
             i++;
@@ -242,38 +240,35 @@ public class MethodNameParser {
     // ────────────────────── разбор одного сегмента условия ───────────────────
 
     /**
-     * Выделяет имя поля и ключевое слово из одного сегмента предиката.
-     * Жадный матчинг суффиксов гарантирует, что «LessThanEqual» всегда
-     * победит над «LessThan».
+     * Выделяет имя поля, флаг IgnoreCase и ключевое слово из одного сегмента предиката.
+     * Корректно обрабатывает составные окончания вроде {@code ContainingIgnoreCase}.
      */
     private ConditionSegment parseConditionSegment(String segment) {
+        boolean segmentIgnoreCase = false;
+        String working = segment;
+
+        if (working.endsWith("IgnoreCase") && working.length() > "IgnoreCase".length()) {
+            segmentIgnoreCase = true;
+            working = working.substring(0, working.length() - "IgnoreCase".length());
+        }
+
         for (String kw : CONDITION_KEYWORDS) {
-            if (segment.endsWith(kw)) {
-                String fieldPart = segment.substring(0, segment.length() - kw.length());
+            if (working.endsWith(kw)) {
+                String fieldPart = working.substring(0, working.length() - kw.length());
                 if (!fieldPart.isEmpty()) {
-                    return new ConditionSegment(toJpqlPath(fieldPart), kw);
+                    return new ConditionSegment(toJpqlPath(fieldPart), kw, segmentIgnoreCase);
                 }
             }
         }
+
+        if (working.isEmpty()) {
+            throw new InvalidMethodNameException("Пустое имя поля в сегменте условия: «" + segment + "»");
+        }
+
         // Нет явного ключевого слова → подразумевается Equals
-        return new ConditionSegment(toJpqlPath(segment), "Equals");
+        return new ConditionSegment(toJpqlPath(working), "Equals", segmentIgnoreCase);
     }
 
-    /**
-     * Генерирует JPQL-выражение для одного условия и регистрирует
-     * все связанные {@link ParamMeta} в списке {@code params}.
-     *
-     * <p>Правила регистрации:
-     * <ul>
-     *   <li>{@code SINGLE}       — один параметр, один аргумент метода</li>
-     *   <li>{@code BETWEEN_START} + {@code BETWEEN_END} — два параметра,
-     *       два последовательных аргумента</li>
-     *   <li>{@code COLLECTION}   — один параметр, один аргумент-Collection/массив</li>
-     *   <li>Нулевые (IsNull, True, …) — параметры не добавляются</li>
-     * </ul>
-     *
-     * @param nextParam [0] — текущий счётчик JPQL-параметров; мутируется in-place
-     */
     private String buildConditionExpression(ConditionSegment cs,
                                             boolean allIgnoreCase,
                                             List<ParamMeta> params,
@@ -282,12 +277,11 @@ public class MethodNameParser {
         String kw   = cs.keyword();
 
         boolean ignoreCase = allIgnoreCase
-            || kw.equals("IgnoreCase")
-            || kw.equals("Containing") || kw.equals("Contains")
-            || kw.equals("StartingWith") || kw.equals("StartsWith")
-            || kw.equals("EndingWith")   || kw.equals("EndsWith");
+                || cs.ignoreCase()
+                || kw.equals("Containing") || kw.equals("Contains")
+                || kw.equals("StartingWith") || kw.equals("StartsWith")
+                || kw.equals("EndingWith")   || kw.equals("EndsWith");
 
-        // Имя и строковое представление текущего параметра
         String pName  = "param" + nextParam[0];
         String param  = ":" + pName;
         String lpath  = ignoreCase ? "LOWER(" + path + ")" : path;
@@ -295,7 +289,7 @@ public class MethodNameParser {
 
         return switch (kw) {
 
-            // ── без параметров (не трогаем nextParam и params) ────────────
+            // ── без параметров ────────────────────────────────────────────
             case "IsNull"    -> path + " IS NULL";
             case "IsNotNull" -> path + " IS NOT NULL";
             case "True"      -> path + " = TRUE";
@@ -326,8 +320,20 @@ public class MethodNameParser {
                 yield path + " NOT IN " + param;
             }
 
+            // ── MemberOf / NotMemberOf (для @ElementCollection / @ManyToMany)
+            case "MemberOf" -> {
+                params.add(new ParamMeta(pName, ParamKind.SINGLE, nextArgIndex(params)));
+                nextParam[0]++;
+                yield param + " MEMBER OF " + path;
+            }
+            case "NotMemberOf" -> {
+                params.add(new ParamMeta(pName, ParamKind.SINGLE, nextArgIndex(params)));
+                nextParam[0]++;
+                yield param + " NOT MEMBER OF " + path;
+            }
+
             // ── единичные параметры ───────────────────────────────────────
-            case "Equals", "Is", "IgnoreCase" -> {
+            case "Equals", "Is" -> {
                 params.add(new ParamMeta(pName, ParamKind.SINGLE, nextArgIndex(params)));
                 nextParam[0]++;
                 yield lpath + " = " + lparam;
@@ -335,17 +341,17 @@ public class MethodNameParser {
             case "Not" -> {
                 params.add(new ParamMeta(pName, ParamKind.SINGLE, nextArgIndex(params)));
                 nextParam[0]++;
-                yield lpath + " != " + lparam;
+                yield lpath + " <> " + lparam;
             }
             case "Like" -> {
                 params.add(new ParamMeta(pName, ParamKind.SINGLE, nextArgIndex(params)));
                 nextParam[0]++;
-                yield path + " LIKE " + param;
+                yield lpath + " LIKE " + lparam;
             }
             case "NotLike" -> {
                 params.add(new ParamMeta(pName, ParamKind.SINGLE, nextArgIndex(params)));
                 nextParam[0]++;
-                yield path + " NOT LIKE " + param;
+                yield lpath + " NOT LIKE " + lparam;
             }
             case "StartingWith", "StartsWith" -> {
                 params.add(new ParamMeta(pName, ParamKind.SINGLE, nextArgIndex(params)));
@@ -362,7 +368,7 @@ public class MethodNameParser {
                 nextParam[0]++;
                 yield lpath + " LIKE CONCAT('%', " + lparam + ", '%')";
             }
-            case "LessThan" -> {
+            case "LessThan", "Before" -> {
                 params.add(new ParamMeta(pName, ParamKind.SINGLE, nextArgIndex(params)));
                 nextParam[0]++;
                 yield path + " < " + param;
@@ -372,7 +378,7 @@ public class MethodNameParser {
                 nextParam[0]++;
                 yield path + " <= " + param;
             }
-            case "GreaterThan" -> {
+            case "GreaterThan", "After" -> {
                 params.add(new ParamMeta(pName, ParamKind.SINGLE, nextArgIndex(params)));
                 nextParam[0]++;
                 yield path + " > " + param;
@@ -382,40 +388,34 @@ public class MethodNameParser {
                 nextParam[0]++;
                 yield path + " >= " + param;
             }
-            case "Before" -> {
-                params.add(new ParamMeta(pName, ParamKind.SINGLE, nextArgIndex(params)));
-                nextParam[0]++;
-                yield path + " < " + param;
-            }
-            case "After" -> {
-                params.add(new ParamMeta(pName, ParamKind.SINGLE, nextArgIndex(params)));
-                nextParam[0]++;
-                yield path + " > " + param;
-            }
 
             default -> throw new InvalidMethodNameException(
-                "Неизвестное ключевое слово: «" + kw + "»"
+                    "Неизвестное ключевое слово: «" + kw + "»"
             );
         };
     }
 
     // ──────────────────────── ORDER BY ────────────────────────────────────────
 
-    /**
-     * Строит ORDER BY из строки вида {@code LastNameAscCreatedAtDesc}.
-     * Если явных Asc/Desc нет — подразумевается ASC.
-     */
     private String buildOrderBy(String orderBy) {
         List<String> orders = new ArrayList<>();
 
-        Pattern p = Pattern.compile("([A-Z][a-zA-Z_]*?)(Asc|Desc)(?=[A-Z]|$)");
+        Pattern p = Pattern.compile("([A-Z][a-zA-Z0-9_]*?)(Asc|Desc)(?=[A-Z]|$)");
         Matcher m = p.matcher(orderBy);
+        int lastEnd = 0;
         while (m.find()) {
             orders.add(toJpqlPath(m.group(1)) + " " + m.group(2).toUpperCase());
+            lastEnd = m.end();
         }
 
         if (orders.isEmpty() && !orderBy.isEmpty()) {
             orders.add(toJpqlPath(orderBy) + " ASC");
+        } else if (lastEnd < orderBy.length()) {
+            // Если последнее поле в цепочке OrderBy указано без Asc/Desc
+            String remainder = orderBy.substring(lastEnd);
+            if (!remainder.isEmpty()) {
+                orders.add(toJpqlPath(remainder) + " ASC");
+            }
         }
 
         return String.join(", ", orders);
@@ -423,33 +423,26 @@ public class MethodNameParser {
 
     // ────────────────────────── утилиты ──────────────────────────────────────
 
-    /**
-     * Преобразует имя поля (CamelCase + подчёркивание для отношений) в JPQL-путь.
-     *
-     * <ul>
-     *   <li>{@code Name}             → {@code u.name}</li>
-     *   <li>{@code Address_CityName} → {@code u.address.cityName}</li>
-     *   <li>{@code Address_City_CountryIsoCode} → {@code u.address.city.countryIsoCode}</li>
-     * </ul>
-     */
     private String toJpqlPath(String field) {
         String path = Arrays.stream(field.split("_"))
-            .map(part -> Character.toLowerCase(part.charAt(0)) + part.substring(1))
-            .collect(Collectors.joining("."));
+                .filter(part -> !part.isEmpty())
+                .map(part -> Character.toLowerCase(part.charAt(0)) + part.substring(1))
+                .collect(Collectors.joining("."));
         return alias + "." + path;
     }
 
-    /** Индекс следующего свободного аргумента метода. */
     private int nextArgIndex(List<ParamMeta> params) {
         if (params.isEmpty()) return 0;
         return params.get(params.size() - 1).argIndex() + 1;
     }
 
-    /** Находит позицию «OrderBy» на уровне предиката (не внутри имени поля). */
     private int indexOfOrderBy(String s) {
         int idx = s.indexOf("OrderBy");
         while (idx >= 0) {
-            if (idx == 0 || Character.isUpperCase(s.charAt(idx))) return idx;
+            int afterIdx = idx + "OrderBy".length();
+            if (afterIdx < s.length() && Character.isUpperCase(s.charAt(afterIdx))) {
+                return idx;
+            }
             idx = s.indexOf("OrderBy", idx + 1);
         }
         return -1;
@@ -469,28 +462,15 @@ public class MethodNameParser {
     /** Тип генерируемого запроса. */
     public enum QueryType { SELECT, COUNT, EXISTS, DELETE }
 
-    /**
-     * Вид параметра в JPQL — определяет как биндить значение
-     * и сколько аргументов метода он потребляет.
-     */
+    /** Вид параметра в JPQL. */
     public enum ParamKind {
-        /** Обычное сравнение — один аргумент. */
         SINGLE,
-        /** Первый параметр BETWEEN — один аргумент. */
         BETWEEN_START,
-        /** Второй параметр BETWEEN — один аргумент. */
         BETWEEN_END,
-        /** IN / NOT IN — один аргумент-коллекция или массив. */
         COLLECTION
     }
 
-    /**
-     * Метаданные одного именованного параметра в сгенерированном JPQL.
-     *
-     * @param name     имя параметра в JPQL без «:», напр. {@code param0}
-     * @param kind     вид параметра — определяет стратегию биндинга
-     * @param argIndex индекс аргумента метода-репозитория
-     */
+    /** Метаданные одного именованного параметра в сгенерированном JPQL. */
     public record ParamMeta(String name, ParamKind kind, int argIndex) {}
 
     /**
@@ -503,14 +483,38 @@ public class MethodNameParser {
      * @param limit    значение Top/First, {@code -1} если не задано
      */
     public record ParsedQuery(
-        String          jpql,
-        QueryType       type,
-        List<ParamMeta> params,
-        boolean         distinct,
-        int             limit
-    ) {}
+            String          jpql,
+            QueryType       type,
+            List<ParamMeta> params,
+            boolean         distinct,
+            int             limit
+    ) {
+        /**
+         * Определяет правильный класс результата для передачи в
+         * {@code session.createQuery(jpql, resultClass)} в Hibernate 6.
+         *
+         * @param entityClass класс сущности репозитория
+         * @return {@code Long.class} для COUNT/EXISTS, {@code Void.class} для DELETE,
+         *         либо {@code entityClass} для SELECT.
+         */
+        public Class<?> resolveResultClass(Class<?> entityClass) {
+            return switch (type) {
+                case COUNT, EXISTS -> Long.class;
+                case DELETE        -> Void.class;
+                case SELECT        -> entityClass;
+            };
+        }
 
-    private record ConditionSegment(String fieldPath, String keyword) {}
+        /**
+         * Показывает, требует ли запрос вызова {@code session.createMutationQuery(jpql)}
+         * и {@code executeUpdate()} вместо обычного {@code createQuery}.
+         */
+        public boolean isMutation() {
+            return type == QueryType.DELETE;
+        }
+    }
+
+    private record ConditionSegment(String fieldPath, String keyword, boolean ignoreCase) {}
 
     public static class InvalidMethodNameException extends RuntimeException {
         public InvalidMethodNameException(String message) { super(message); }
